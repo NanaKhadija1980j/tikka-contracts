@@ -271,6 +271,7 @@ fn test_admin_updates_oracle_address() {
     let raffle = client.get_raffle();
     assert_eq!(raffle.claim_lockup_seconds, DEFAULT_CLAIM_LOCKUP_SECONDS);
     assert_eq!(raffle.swap_deadline_seconds, DEFAULT_SWAP_DEADLINE_SECONDS);
+}
 
 #[contractimpl]
 impl MockFactory {
