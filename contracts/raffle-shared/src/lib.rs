@@ -338,3 +338,27 @@ macro_rules! impl_require_not_paused {
         }
     };
 }
+
+/// Generate a not-paused guard that reads **persistent** `DataKey::Paused`.
+///
+/// The factory contract keeps *all* of its state in persistent storage (#1219),
+/// including the pause flags, so the guard must read the same tier the flags
+/// are written to.  Reading the instance tier would silently ignore the flag
+/// (and vice versa), which would make the factory impossible to pause or
+/// unpause.
+#[macro_export]
+macro_rules! impl_require_not_paused_persistent {
+    ($error_type:ty, $contract_paused:expr, $fn_name:ident) => {
+        fn $fn_name(env: &soroban_sdk::Env) -> Result<(), $error_type> {
+            if env
+                .storage()
+                .persistent()
+                .get(&DataKey::Paused)
+                .unwrap_or(false)
+            {
+                return Err($contract_paused);
+            }
+            Ok(())
+        }
+    };
+}

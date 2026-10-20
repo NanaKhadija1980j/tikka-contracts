@@ -108,7 +108,9 @@ pub enum ContractError {
 pub struct RaffleFactory;
 
 raffle_shared::impl_require_admin!(ContractError, ContractError::NotAuthorized);
-raffle_shared::impl_require_not_paused!(
+// #1219: every factory key — including the pause flags — lives in persistent
+// storage, so the guard reads the same tier the flags are written to.
+raffle_shared::impl_require_not_paused_persistent!(
     ContractError,
     ContractError::ContractPaused,
     require_factory_not_paused
@@ -535,7 +537,7 @@ impl RaffleFactory {
             .unwrap_or(0);
         let paused: bool = env
             .storage()
-            .instance()
+            .persistent()
             .get(&DataKey::Paused)
             .unwrap_or(false);
         let total_unique_participants: u32 = env
@@ -748,7 +750,9 @@ impl RaffleFactory {
 
     pub fn pause_factory(env: Env) -> Result<(), ContractError> {
         let admin = require_admin(&env)?;
-        env.storage().instance().set(&DataKey::Paused, &true);
+        // #1219: the pause flag lives in persistent storage, like every other
+        // factory key.
+        env.storage().persistent().set(&DataKey::Paused, &true);
 
         events::ContractPaused {
             paused_by: admin,
@@ -761,7 +765,9 @@ impl RaffleFactory {
 
     pub fn unpause_factory(env: Env) -> Result<(), ContractError> {
         let admin = require_admin(&env)?;
-        env.storage().instance().set(&DataKey::Paused, &false);
+        // #1219: the pause flag lives in persistent storage, like every other
+        // factory key.
+        env.storage().persistent().set(&DataKey::Paused, &false);
 
         events::ContractUnpaused {
             unpaused_by: admin,
@@ -773,8 +779,9 @@ impl RaffleFactory {
     }
 
     pub fn is_factory_paused(env: Env) -> bool {
+        // #1219: the pause flag lives in persistent storage.
         env.storage()
-            .instance()
+            .persistent()
             .get(&DataKey::Paused)
             .unwrap_or(false)
     }
@@ -2134,5 +2141,68 @@ mod tests {
         assert!(!p1.has_more);
         assert_eq!(p1.items.get(0).unwrap(), addrs[3].clone());
         assert_eq!(p1.items.get(1).unwrap(), addrs[4].clone());
+    }
+
+    // ========================================================================
+    // #1219 — the factory pause flag lives in persistent storage
+    // ========================================================================
+
+    #[test]
+    fn pause_flag_round_trips_through_persistent_storage() {
+        let env = Env::default();
+        env.mock_all_auths();
+        let (client, _admin, _treasury) = setup_factory(&env);
+        let factory_address = client.address.clone();
+
+        assert!(!client.is_factory_paused());
+
+        client.pause_factory();
+        assert!(client.is_factory_paused());
+        assert!(client.get_protocol_stats().paused);
+
+        // The flag must be stored in persistent storage, like every other
+        // factory key, and must not be left behind in the instance tier.
+        let stored_persistent: bool = env.as_contract(&factory_address, || {
+            env.storage()
+                .persistent()
+                .get(&DataKey::Paused)
+                .unwrap_or(false)
+        });
+        assert!(
+            stored_persistent,
+            "Paused must be stored in persistent storage"
+        );
+
+        let stored_instance: bool = env.as_contract(&factory_address, || {
+            env.storage().instance().get(&DataKey::Paused).unwrap_or(false)
+        });
+        assert!(
+            !stored_instance,
+            "Paused must not be stored in instance storage"
+        );
+
+        // A paused factory refuses to create new raffles.
+        let creator = Address::generate(&env);
+        let payment_token = env
+            .register_stellar_asset_contract_v2(Address::generate(&env))
+            .address();
+        let config = test_raffle_config(&env, &payment_token);
+        assert_eq!(
+            client.try_create_raffle(&creator, &config).err(),
+            Some(Ok(ContractError::ContractPaused))
+        );
+
+        // Unpausing restores the round trip.
+        client.unpause_factory();
+        assert!(!client.is_factory_paused());
+        assert!(!client.get_protocol_stats().paused);
+
+        let stored_persistent: bool = env.as_contract(&factory_address, || {
+            env.storage()
+                .persistent()
+                .get(&DataKey::Paused)
+                .unwrap_or(false)
+        });
+        assert!(!stored_persistent);
     }
 }

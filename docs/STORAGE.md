@@ -27,7 +27,7 @@ Source of truth: `DataKey` enum.
 | `InstanceWasmHash` | Persistent | Init + timelocked upgrade ops | Yes | No | Required to deploy instances |
 | `ProtocolFeeBP` | Persistent | Init + executed `PendingOp` | Yes | No | Fee policy |
 | `Treasury` | Persistent | Init + executed `PendingOp` | Yes | No | Fee recipient |
-| `Paused` | **Instance** | Updated on pause/unpause | Yes | No | Absent ⇒ not paused |
+| `Paused` | Persistent | Updated on pause/unpause | Yes | No | Absent ⇒ not paused (#1219) |
 | `PendingAdmin` | Persistent | Set on propose; removed on accept/cancel | Yes (while pending) | No while pending | Two-step admin transfer |
 | `PendingOp(u32)` | Persistent | Per proposed op; removed on execute/cancel | Yes while pending | After execute/cancel OK | Timelock payload (`TIMELOCK_DELAY_SECONDS` = 172800) |
 | `OpCounter` | Persistent | Incremented per propose | Yes | No | Allocates op IDs |
@@ -52,6 +52,28 @@ Source of truth: `DataKey` enum.
 - **Write-once (effectively):** `Initialized`, first `Admin` / `InstanceWasmHash` / `ProtocolFeeBP` / `Treasury` (later changes go through timelock or transfer flows).
 - **Per-raffle create:** `RaffleById`, `NextRaffleId`, `RaffleCount`, `TotalRafflesCreated`, `CreatorRaffles`, optional `CategoryRaffles`, rate-limit + volume keys.
 - **Per admin action:** `Paused`, `PendingAdmin`, `PendingOp` / `OpCounter`, partner/delay config.
+
+### Factory storage tier consistency (#1219)
+
+**All** factory state — including the `Paused` flag — lives in **persistent**
+storage.  The pause flag used to live in the instance tier while every other
+factory key lived in persistent storage, which meant:
+
+- `pause_factory` / `unpause_factory` wrote a flag that the pause guard (which
+  reads persistent storage) could not see, so the factory could not actually
+  be paused;
+- the flag was tied to the instance TTL instead of the per-key TTL used by the
+  rest of the factory state.
+
+The pause flag is now written, read and guarded in persistent storage, and
+`require_factory_not_paused` reads the same tier.
+
+> **Migration / upgrade note:** deployments that were paused *before* this
+> change still have their flag in the **instance** tier.  After upgrading, the
+> instance-tier flag is ignored, so the factory reads as *not paused*.  Before
+> or right after upgrading, re-set the flag explicitly
+> (`pause_factory` → `unpause_factory`, which now writes to persistent
+> storage) so the intended pause state is preserved.
 
 ### Factory archival guidance
 
@@ -117,7 +139,7 @@ Admin cancellation scheduling (`execute_admin_cancel` / related flows) stores a 
 
 | Contract | Extend instance by | Re-bump cadence | Priority persistent keys |
 |---|---|---|---|
-| Factory (long-lived) | ~1 year (`6220800` ledgers) | Every ~6 months | `Admin`, `InstanceWasmHash`, `Treasury`, `ProtocolFeeBP`, `NextRaffleId`, live `RaffleById` |
+| Factory (long-lived) | ~1 year (`6220800` ledgers) | Every ~6 months | `Admin`, `InstanceWasmHash`, `Treasury`, `ProtocolFeeBP`, `Paused`, `NextRaffleId`, live `RaffleById` |
 | Instance (per raffle) | ~6 months (`3110400` ledgers) while Active/Drawing/Finalized | Monthly for open raffles | All `Ticket(*)`, `TicketCount`, `OwnerTickets`, `CommitEntry`, `RandomnessSeed` |
 
 Example (factory instance TTL):
