@@ -104,7 +104,19 @@ pub struct RaffleConfig {
     pub ticket_price: i128,
     /// Soroban address for the token used to buy tickets.
     pub payment_token: Address,
-    /// Total prize amount denominated in the same payment token.
+    /// Optional token used to pay out the prize.
+    ///
+    /// When `None` (the default) the prize is denominated in `payment_token`.
+    /// When a *different* asset is configured, `prize_amount` is denominated
+    /// in that asset's base units and must **not** be compared numerically with
+    /// `ticket_price`, which is denominated in `payment_token`: the two values
+    /// may have a different asset type and a different decimal precision.
+    pub prize_token: Option<Address>,
+    /// Total prize amount denominated in the `prize_token` asset's base units.
+    ///
+    /// When `prize_token` is `None` the prize token defaults to `payment_token`,
+    /// so `prize_amount` and `ticket_price` share the same denomination and can
+    /// be compared directly.
     pub prize_amount: i128,
     /// Prize distribution vector; each value maps to winner allocation units.
     pub prizes: Vec<u32>,

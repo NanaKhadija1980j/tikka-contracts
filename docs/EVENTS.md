@@ -356,8 +356,8 @@ Emitted when the creator deposits the prize pool into the raffle contract.
 | Field | Type | Description |
 |-------|------|-------------|
 | `creator` | `Address` | Address that deposited the prize |
-| `amount` | `i128` | Amount of tokens deposited |
-| `token` | `Address` | Address of the deposited token contract |
+| `amount` | `i128` | Amount of tokens deposited (denominated in the raffle's `prize_token`) |
+| `token` | `Address` | Address of the deposited token contract (the raffle's `prize_token`) |
 | `timestamp` | `u64` | Ledger timestamp of the deposit |
 
 **Emitted by:** `deposit_prize`
@@ -372,8 +372,8 @@ Emitted when the deposited prize is refunded back to the creator.
 | Field | Type | Description |
 |-------|------|-------------|
 | `creator` | `Address` | Address receiving the refund |
-| `amount` | `i128` | Amount of tokens refunded |
-| `token` | `Address` | Address of the refunded token contract |
+| `amount` | `i128` | Amount of tokens refunded (denominated in the raffle's `prize_token`) |
+| `token` | `Address` | Address of the refunded token contract (the raffle's `prize_token`) |
 | `timestamp` | `u64` | Ledger timestamp of the refund |
 
 **Emitted by:** `refund_prize`

@@ -154,6 +154,7 @@ pub struct Raffle {
     pub min_tickets: u32,
     pub allow_multiple: bool,
     pub ticket_price: i128,
+    pub prize_token: Address,
     pub prize_amount: i128,
     pub prizes: Vec<u32>,
     pub tickets_sold: u32,
@@ -176,7 +177,7 @@ pub struct Raffle {
 ### **Contract Constraints (Demo)**
 
 -   Only one winner per raffle
--   Prize and ticket payments use the same Stellar asset
+-   Ticket payments use the configured `payment_token`; the prize uses the configured `prize_token`, which defaults to `payment_token` but may be a different asset (see [docs/GLOSSARY.md](docs/GLOSSARY.md))
 -   Internal PRNG is suitable for low-stakes raffles (e.g., sub-500 XLM prizes)
 -   For high-stakes raffles, prefer the external oracle/VRF randomness path
 

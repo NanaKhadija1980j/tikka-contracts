@@ -1066,6 +1066,10 @@ mod tests {
             metadata_hash: BytesN::from_array(env, &[1u8; 32]),
             claim_lockup_seconds: 0,
             swap_deadline_seconds: 0,
+            prize_token: None,
+            early_bird_ticket_percentage: 0,
+            early_bird_discount_bp: 0,
+            category: None,
         }
     }
 
@@ -1910,6 +1914,7 @@ mod tests {
             early_bird_ticket_percentage: 0,
             early_bird_discount_bp: 0,
             category: None,
+            prize_token: None,
         }
     }
 

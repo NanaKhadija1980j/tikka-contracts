@@ -467,7 +467,26 @@ impl Contract {
         if config.ticket_price < MIN_TICKET_PRICE {
             return Err(Error::InvalidParameters);
         }
-        if config.prize_amount < config.ticket_price {
+
+        // #1218: `ticket_price` is denominated in `payment_token` while
+        // `prize_amount` is denominated in `prize_token`.  Comparing the two
+        // raw base-unit values is only meaningful when both amounts refer to
+        // the very same asset: a different prize asset may have a different
+        // asset type and a different decimal precision, so the two numbers are
+        // simply not comparable.  When the assets differ, each amount is
+        // validated independently instead.
+        let prize_token = config
+            .prize_token
+            .clone()
+            .unwrap_or_else(|| config.payment_token.clone());
+
+        if prize_token == config.payment_token {
+            // Same asset: the prize must at least cover one ticket.
+            if config.prize_amount < config.ticket_price {
+                return Err(Error::InvalidParameters);
+            }
+        } else if config.prize_amount <= 0 {
+            // Different asset: only absolute validity can be checked.
             return Err(Error::InvalidParameters);
         }
         if config.prize_amount > MAX_PRIZE_AMOUNT {
@@ -513,8 +532,13 @@ impl Contract {
         // Validate that the payment_token is a valid token contract
         validate_token_address(&env, &config.payment_token)?;
 
-        // Prize token matches payment token (no separate prize_token on RaffleConfig).
-        let prize_token = config.payment_token.clone();
+        // #1218: when the prize is paid in a different asset, that asset must
+        // be a valid token contract as well.
+        if let Some(ref token) = config.prize_token {
+            if *token != config.payment_token {
+                validate_token_address(&env, token)?;
+            }
+        }
 
         // Resolve default values for fields that use 0 as "use default"
         let config = config.resolve_defaults();
@@ -629,7 +653,8 @@ impl Contract {
         PrizeDeposited {
             creator: raffle.creator.clone(),
             amount: raffle.prize_amount,
-            token: raffle.payment_token.clone(),
+            // #1218: the prize amount is denominated in `prize_token`.
+            token: raffle.prize_token.clone(),
             timestamp,
         }
         .publish(&env);
@@ -1362,12 +1387,10 @@ impl Contract {
         raffle.prize_deposited = false;
         write_raffle(&env, &raffle);
 
-        let token_client = token::Client::new(&env, &raffle.payment_token);
-        token_client.transfer(
-            &env.current_contract_address(),
-            &raffle.creator,
-            &raffle.prize_amount,
-        );
+        // #1218: the prize is denominated in `prize_token`, which may differ
+        // from the ticket payment token, so the refund must use the prize
+        // token.  The transfer is performed exactly once.
+        let token_client = token::Client::new(&env, &raffle.prize_token);
         let _ = token_client
             .try_transfer(
                 &env.current_contract_address(),

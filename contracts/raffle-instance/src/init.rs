@@ -47,7 +47,20 @@ pub(crate) fn init(
     if config.ticket_price < MIN_TICKET_PRICE {
         return Err(Error::InvalidParameters);
     }
-    if config.prize_amount < config.ticket_price {
+
+    // #1218: `ticket_price` is denominated in `payment_token` while
+    // `prize_amount` is denominated in `prize_token`.  The two amounts are
+    // only comparable when both refer to the same asset.
+    let prize_token = config
+        .prize_token
+        .clone()
+        .unwrap_or_else(|| config.payment_token.clone());
+
+    if prize_token == config.payment_token {
+        if config.prize_amount < config.ticket_price {
+            return Err(Error::InvalidParameters);
+        }
+    } else if config.prize_amount <= 0 {
         return Err(Error::InvalidParameters);
     }
     if config.prize_amount > MAX_PRIZE_AMOUNT {
@@ -85,6 +98,11 @@ pub(crate) fn init(
     validate_category(&config.category)?;
 
     validate_token_address(&env, &config.payment_token)?;
+    if let Some(ref token) = config.prize_token {
+        if *token != config.payment_token {
+            validate_token_address(&env, token)?;
+        }
+    }
     let config = config.resolve_defaults();
 
     if config.claim_lockup_seconds > MAX_CLAIM_LOCKUP_SECONDS {
@@ -105,7 +123,7 @@ pub(crate) fn init(
         allow_multiple: config.allow_multiple,
         ticket_price: config.ticket_price,
         payment_token: config.payment_token.clone(),
-        prize_token: config.payment_token.clone(),
+        prize_token: prize_token.clone(),
         prize_amount: config.prize_amount,
         prizes: config.prizes.clone(),
         tickets_sold: 0,

@@ -64,6 +64,8 @@ fn test_oracle_fallback_with_ledger_delays() {
         swap_deadline_seconds: 0,
         early_bird_ticket_percentage: 0,
         early_bird_discount_bp: 0,
+        prize_token: None,
+        category: None,
     };
 
     client.init(&factory, &admin, &creator, &config);
@@ -251,6 +253,8 @@ fn test_admin_updates_oracle_address() {
         swap_deadline_seconds: 0,
         early_bird_ticket_percentage: 0,
         early_bird_discount_bp: 0,
+        prize_token: None,
+        category: None,
     };
 
     client.init(&factory, &admin, &creator, &config);
@@ -264,6 +268,118 @@ fn test_admin_updates_oracle_address() {
 impl MockFactory {
     pub fn record_volume(_env: Env, _token: Address, _amount: i128) {}
     pub fn track_participant(_env: Env, _participant: Address) {}
+}
+
+// ============================================================================
+// #1218 — `prize_amount` and `ticket_price` live in different tokens
+// ============================================================================
+
+#[test]
+fn cross_token_raffle_accepts_prize_amount_below_ticket_price() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().set_timestamp(1_000);
+
+    let factory = Address::generate(&env);
+    let admin = Address::generate(&env);
+    let creator = Address::generate(&env);
+
+    let payment_token = env
+        .register_stellar_asset_contract_v2(Address::generate(&env))
+        .address();
+    let prize_token = env
+        .register_stellar_asset_contract_v2(Address::generate(&env))
+        .address();
+
+    let contract_id = env.register(Contract, ());
+    let client = ContractClient::new(&env, &contract_id);
+
+    let config = RaffleConfig {
+        description: String::from_str(&env, "Cross token raffle"),
+        end_time: 0,
+        no_deadline: true,
+        max_tickets: 10,
+        max_tickets_per_tx: 10,
+        min_tickets: 1,
+        allow_multiple: true,
+        // Ticket price is denominated in `payment_token` ...
+        ticket_price: 1_000_000,
+        payment_token: payment_token.clone(),
+        // ... while the prize is denominated in a different asset, so the two
+        // raw amounts are not comparable.
+        prize_token: Some(prize_token.clone()),
+        prize_amount: 1,
+        prizes: soroban_sdk::vec![&env, 10000],
+        randomness_source: RandomnessSource::Internal,
+        oracle_address: None,
+        protocol_fee_bp: 0,
+        treasury_address: None,
+        swap_router: None,
+        tikka_token: None,
+        metadata_hash: BytesN::from_array(&env, &[82u8; 32]),
+        claim_lockup_seconds: 0,
+        swap_deadline_seconds: 0,
+        early_bird_ticket_percentage: 0,
+        early_bird_discount_bp: 0,
+        category: None,
+    };
+
+    // Must initialize successfully: the prize amount is smaller than the
+    // ticket price, but the two values refer to different assets.
+    client.init(&factory, &admin, &creator, &config);
+
+    let raffle = client.get_raffle();
+    assert_eq!(raffle.prize_token, prize_token);
+    assert_eq!(raffle.prize_amount, 1);
+    assert_eq!(raffle.ticket_price, 1_000_000);
+    assert_eq!(raffle.payment_token, payment_token);
+}
+
+#[test]
+fn same_token_raffle_rejects_prize_amount_below_ticket_price() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().set_timestamp(1_000);
+
+    let factory = Address::generate(&env);
+    let admin = Address::generate(&env);
+    let creator = Address::generate(&env);
+    let payment_token = env
+        .register_stellar_asset_contract_v2(Address::generate(&env))
+        .address();
+
+    let contract_id = env.register(Contract, ());
+    let client = ContractClient::new(&env, &contract_id);
+
+    let config = RaffleConfig {
+        description: String::from_str(&env, "Same token raffle"),
+        end_time: 0,
+        no_deadline: true,
+        max_tickets: 10,
+        max_tickets_per_tx: 10,
+        min_tickets: 1,
+        allow_multiple: true,
+        ticket_price: 1_000_000,
+        payment_token: payment_token.clone(),
+        prize_token: None,
+        prize_amount: 1,
+        prizes: soroban_sdk::vec![&env, 10000],
+        randomness_source: RandomnessSource::Internal,
+        oracle_address: None,
+        protocol_fee_bp: 0,
+        treasury_address: None,
+        swap_router: None,
+        tikka_token: None,
+        metadata_hash: BytesN::from_array(&env, &[83u8; 32]),
+        claim_lockup_seconds: 0,
+        swap_deadline_seconds: 0,
+        early_bird_ticket_percentage: 0,
+        early_bird_discount_bp: 0,
+        category: None,
+    };
+
+    // Same asset: the prize must cover at least one ticket.
+    assert!(client.try_init(&factory, &admin, &creator, &config).is_err());
 }
 
 #[test]
@@ -300,6 +416,8 @@ fn non_winner_cannot_claim() {
         swap_deadline_seconds: 0,
         early_bird_ticket_percentage: 0,
         early_bird_discount_bp: 0,
+        prize_token: None,
+        category: None,
     };
 
     client.init(&factory, &admin, &creator, &config);
@@ -355,6 +473,8 @@ fn test_admin_withdraws_accumulated_fees() {
         swap_deadline_seconds: 0,
         early_bird_ticket_percentage: 0,
         early_bird_discount_bp: 0,
+        prize_token: None,
+        category: None,
     };
 
     client.init(&factory, &admin, &creator, &config);
@@ -416,6 +536,8 @@ fn buy_tickets_rejects_quantity_above_per_tx_cap() {
         swap_deadline_seconds: 0,
         early_bird_ticket_percentage: 0,
         early_bird_discount_bp: 0,
+        prize_token: None,
+        category: None,
     };
 
     client.init(&factory, &admin, &creator, &config);
@@ -474,6 +596,8 @@ fn setup_active_raffle(
         swap_deadline_seconds: 0,
         early_bird_ticket_percentage: 0,
         early_bird_discount_bp: 0,
+        prize_token: None,
+        category: None,
     };
 
     client.init(&factory, &admin, &creator, &config);
@@ -516,6 +640,8 @@ fn pause_resume_ticket_sales_controls_buy_tickets() {
         swap_deadline_seconds: 0,
         early_bird_ticket_percentage: 0,
         early_bird_discount_bp: 0,
+        prize_token: None,
+        category: None,
     };
 
     client.init(&factory, &admin, &creator, &config);
@@ -590,6 +716,8 @@ fn test_wipe_storage_removes_all_keys() {
         swap_deadline_seconds: 0,
         early_bird_ticket_percentage: 0,
         early_bird_discount_bp: 0,
+        prize_token: None,
+        category: None,
     };
 
     client.init(&factory, &admin, &creator, &config);
@@ -886,6 +1014,10 @@ fn emergency_withdraw_fails_in_active_state() {
         tikka_token: None,
         metadata_hash: BytesN::from_array(&env, &[13; 32]),
         claim_lockup_seconds: 0,
+        prize_token: None,
+        early_bird_ticket_percentage: 0,
+        early_bird_discount_bp: 0,
+        category: None,
     };
 
     client.init(&factory, &admin, &creator, &config);
@@ -946,6 +1078,10 @@ fn setup_external_drawing_raffle(
         tikka_token: None,
         metadata_hash: BytesN::from_array(&env, &[14; 32]),
         claim_lockup_seconds: 0,
+        prize_token: None,
+        early_bird_ticket_percentage: 0,
+        early_bird_discount_bp: 0,
+        category: None,
     };
 
     client.init(&factory, &admin, &creator, &config);
@@ -1023,6 +1159,10 @@ fn test_refund_guard_released_after_success() {
         tikka_token: None,
         metadata_hash: BytesN::from_array(&env, &[15; 32]),
         claim_lockup_seconds: 0,
+        prize_token: None,
+        early_bird_ticket_percentage: 0,
+        early_bird_discount_bp: 0,
+        category: None,
     };
 
     client.init(&factory, &admin, &creator, &config);
@@ -1285,6 +1425,10 @@ fn prize_distribution_invariant_holds_for_multiple_tiers() {
                 metadata_hash: BytesN::from_array(&env, &[33; 32]),
                 claim_lockup_seconds: 0,
                 swap_deadline_seconds: 0,
+                prize_token: None,
+                early_bird_ticket_percentage: 0,
+                early_bird_discount_bp: 0,
+                category: None,
             };
 
             client.init(&factory, &admin, &creator, &config);
@@ -1380,6 +1524,10 @@ fn commit_reveal_entropy_is_mixed_from_all_tickets() {
             metadata_hash: BytesN::from_array(&env, &[metadata_byte; 32]),
             claim_lockup_seconds: 0,
             swap_deadline_seconds: 0,
+            prize_token: None,
+            early_bird_ticket_percentage: 0,
+            early_bird_discount_bp: 0,
+            category: None,
         };
 
         client.init(&factory, &admin, &creator, &config);
@@ -1461,6 +1609,10 @@ fn commit_reveal_preserves_entropy_after_ticket_transfer() {
         metadata_hash: BytesN::from_array(&env, &[46; 32]),
         claim_lockup_seconds: 0,
         swap_deadline_seconds: 0,
+        prize_token: None,
+        early_bird_ticket_percentage: 0,
+        early_bird_discount_bp: 0,
+        category: None,
     };
 
     client.init(&factory, &admin, &creator, &config);
@@ -1664,6 +1816,10 @@ fn drawing_lock_cleared_after_oracle_randomness() {
         metadata_hash: BytesN::from_array(&env, &[49; 32]),
         claim_lockup_seconds: 0,
         swap_deadline_seconds: 0,
+        prize_token: None,
+        early_bird_ticket_percentage: 0,
+        early_bird_discount_bp: 0,
+        category: None,
     };
 
     client.init(&factory, &admin, &creator, &config);
@@ -1735,6 +1891,10 @@ fn drawing_lock_cleared_after_fallback_refund() {
         metadata_hash: BytesN::from_array(&env, &[50; 32]),
         claim_lockup_seconds: 0,
         swap_deadline_seconds: 0,
+        prize_token: None,
+        early_bird_ticket_percentage: 0,
+        early_bird_discount_bp: 0,
+        category: None,
     };
 
     client.init(&factory, &admin, &creator, &config);
@@ -1790,6 +1950,10 @@ fn drawing_lock_cleared_after_fallback_no_refund() {
         metadata_hash: BytesN::from_array(&env, &[51; 32]),
         claim_lockup_seconds: 0,
         swap_deadline_seconds: 0,
+        prize_token: None,
+        early_bird_ticket_percentage: 0,
+        early_bird_discount_bp: 0,
+        category: None,
     };
 
     client.init(&factory, &admin, &creator, &config);
@@ -1845,6 +2009,10 @@ fn drawing_lock_cleared_after_cancel_in_drawing_state() {
         metadata_hash: BytesN::from_array(&env, &[52; 32]),
         claim_lockup_seconds: 0,
         swap_deadline_seconds: 0,
+        prize_token: None,
+        early_bird_ticket_percentage: 0,
+        early_bird_discount_bp: 0,
+        category: None,
     };
 
     client.init(&factory, &admin, &creator, &config);
@@ -1903,6 +2071,10 @@ fn test_bundle_pricing_applies() {
             raffle_shared::TicketBundle { quantity: 10, price_per_ticket: 80_000 },
             raffle_shared::TicketBundle { quantity: 20, price_per_ticket: 70_000 },
         ],
+        prize_token: None,
+        early_bird_ticket_percentage: 0,
+        early_bird_discount_bp: 0,
+        category: None,
     };
 
     client.init(&factory, &admin, &creator, &config);
@@ -1956,6 +2128,7 @@ fn lifecycle_config(env: &Env, payment_token: &Address, treasury: &Address) -> R
         early_bird_ticket_percentage: 0,
         early_bird_discount_bp: 0,
         category: None,
+        prize_token: None,
     }
 }
 
@@ -2137,6 +2310,7 @@ fn buy_tickets_stays_within_compute_limits_near_max() {
         early_bird_ticket_percentage: 0,
         early_bird_discount_bp: 0,
         category: None,
+        prize_token: None,
     };
 
     client.init(&creator_factory_addr(&env), &admin, &creator, &config);

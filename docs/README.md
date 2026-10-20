@@ -32,6 +32,10 @@ Comprehensive reference for all events emitted by the Tikka raffle system. Cover
 **Audience:** Contributors, Integrators, Frontend Developers  
 Complete documentation of all error codes used in Tikka contracts. Includes error code mappings, descriptions, and suggested frontend messages. Contains code examples for React error handling and testing guidance. Essential for frontend developers building user-friendly error displays.
 
+### [GLOSSARY.md](GLOSSARY.md)
+**Audience:** Integrators, Frontend Developers, Auditors  
+Reference for every monetary and configuration field used by the contracts, stating which token each amount is denominated in (`payment_token` vs `prize_token`) and which fields are dimensionless (basis points, counts, timestamps). Prevents invalid cross-asset comparisons such as `prize_amount < ticket_price` when the prize is paid in a different asset.
+
 ### [FEE_MODEL.md](FEE_MODEL.md)
 **Audience:** Contributors, Integrators  
 Explains the Tikka protocol fee model, including fee collection points at ticket purchase and prize claim. Provides formulas, examples, and effective total fee calculations. Useful for understanding protocol economics and revenue distribution.
