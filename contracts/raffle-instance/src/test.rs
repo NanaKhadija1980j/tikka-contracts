@@ -20,6 +20,14 @@ fn assert_drawing_lock_cleared(env: &Env, contract_id: &Address) {
     assert!(!is_set, "DrawingLock must be cleared");
 }
 
+/// Registers a Stellar asset contract and returns its address together with a
+/// minting client for it.
+fn create_token<'a>(env: &Env, admin: &Address) -> (Address, StellarAssetClient<'a>) {
+    let sac = env.register_stellar_asset_contract_v2(admin.clone());
+    let addr = sac.address();
+    (addr.clone(), StellarAssetClient::new(env, &addr))
+}
+
 #[test]
 fn test_oracle_fallback_with_ledger_delays() {
     let env = Env::default();
@@ -892,11 +900,6 @@ fn emergency_withdraw_fails_for_no_deadline_raffle_before_timeout() {
 
     let end_time = 5_000u64;
     let config = RaffleConfig {
-        description: String::from_str(&env, "Test"),
-        end_time: 0,
-        no_deadline: true,
-        max_tickets: 1,
-        max_tickets_per_tx: 1,
         description: String::from_str(&env, "Refund test"),
         end_time: 0,
         no_deadline: true,
@@ -906,7 +909,6 @@ fn emergency_withdraw_fails_for_no_deadline_raffle_before_timeout() {
         allow_multiple: true,
         ticket_price: MIN_TICKET_PRICE,
         payment_token: payment_token.clone(),
-        prize_amount: MIN_TICKET_PRICE * 10,
         prize_amount: MIN_TICKET_PRICE * 5,
         prizes: vec![&env, 10000u32],
         randomness_source: RandomnessSource::External,
@@ -1059,6 +1061,45 @@ fn emergency_withdraw_fails_in_cancelled_state() {
     let token_client = StellarAssetClient::new(&env, &payment_token);
     token_client.mint(&creator, &1_000_000);
 
+    let contract_id = env.register(Contract, ());
+    let client = ContractClient::new(&env, &contract_id);
+
+    let config = RaffleConfig {
+        description: String::from_str(&env, "Cancelled state"),
+        end_time: 0,
+        no_deadline: true,
+        max_tickets: 5,
+        max_tickets_per_tx: 5,
+        min_tickets: 1,
+        allow_multiple: true,
+        ticket_price: MIN_TICKET_PRICE,
+        payment_token: payment_token.clone(),
+        prize_amount: MIN_TICKET_PRICE * 10,
+        prizes: soroban_sdk::vec![&env, 10000],
+        randomness_source: RandomnessSource::Internal,
+        oracle_address: None,
+        protocol_fee_bp: 0,
+        treasury_address: None,
+        swap_router: None,
+        tikka_token: None,
+        metadata_hash: BytesN::from_array(&env, &[14u8; 32]),
+        claim_lockup_seconds: 0,
+        swap_deadline_seconds: 0,
+        prize_token: None,
+        early_bird_ticket_percentage: 0,
+        early_bird_discount_bp: 0,
+        category: None,
+    };
+
+    client.init(&factory, &admin, &creator, &config);
+    client.deposit_prize();
+    client.cancel_raffle(&CancelReason::CreatorCancelled);
+
+    // A cancelled raffle can no longer be emergency-withdrawn.
+    let result = client.try_emergency_withdraw(&creator);
+    assert_eq!(result.err(), Some(Ok(Error::InvalidStatus)));
+}
+
 fn setup_external_drawing_raffle(
     env: &Env,
 ) -> (Address, ContractClient<'_>, Address, Address, Address, u64) {
@@ -1083,7 +1124,7 @@ fn setup_external_drawing_raffle(
         min_tickets: 1,
         allow_multiple: true,
         ticket_price: MIN_TICKET_PRICE,
-        payment_token: payment_token.clone(),
+        payment_token: token_addr.clone(),
         prize_amount: MIN_TICKET_PRICE * 10,
         prizes: soroban_sdk::vec![&env, 10000],
         randomness_source: RandomnessSource::Internal,
@@ -1094,6 +1135,7 @@ fn setup_external_drawing_raffle(
         tikka_token: None,
         metadata_hash: BytesN::from_array(&env, &[14u8; 32]),
         claim_lockup_seconds: 0,
+        swap_deadline_seconds: 0,
         prize_token: None,
         early_bird_ticket_percentage: 0,
         early_bird_discount_bp: 0,
@@ -1102,7 +1144,7 @@ fn setup_external_drawing_raffle(
 
     client.init(&factory, &admin, &creator, &config);
     client.deposit_prize();
-    client.cancel(&creator, &CancelReason::Other);
+    client.cancel_raffle(&CancelReason::CreatorCancelled);
 
     let result = client.try_emergency_withdraw(&creator);
     assert_eq!(result.err(), Some(Ok(Error::InvalidStatus)));
@@ -1110,11 +1152,51 @@ fn setup_external_drawing_raffle(
 
 #[test]
 fn emergency_withdraw_fails_if_prize_not_deposited() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().set_timestamp(1_000);
+
+    let factory = Address::generate(&env);
+    let admin = Address::generate(&env);
+    let creator = Address::generate(&env);
+    let buyer = Address::generate(&env);
+
+    let token_admin = Address::generate(&env);
+    let payment_token = env
+        .register_stellar_asset_contract_v2(token_admin.clone())
+        .address();
+    let token_client = StellarAssetClient::new(&env, &payment_token);
+    token_client.mint(&creator, &1_000_000);
+    token_client.mint(&buyer, &1_000_000);
+
+    let contract_id = env.register(Contract, ());
+    let client = ContractClient::new(&env, &contract_id);
+
+    let config = RaffleConfig {
+        description: String::from_str(&env, "No prize deposited"),
+        end_time: 10_000,
+        no_deadline: false,
+        max_tickets: 5,
+        max_tickets_per_tx: 5,
+        min_tickets: 1,
+        allow_multiple: true,
+        ticket_price: MIN_TICKET_PRICE,
+        payment_token: payment_token.clone(),
+        prize_amount: MIN_TICKET_PRICE * 10,
+        prizes: soroban_sdk::vec![&env, 10000],
+        randomness_source: RandomnessSource::Internal,
+        oracle_address: None,
+        protocol_fee_bp: 0,
+        treasury_address: None,
+        swap_router: None,
+        tikka_token: None,
         metadata_hash: BytesN::from_array(&env, &[5u8; 32]),
         claim_lockup_seconds: 0,
         swap_deadline_seconds: 0,
         prize_token: None,
-        nft_contract: None,
+        early_bird_ticket_percentage: 0,
+        early_bird_discount_bp: 0,
+        category: None,
     };
 
     client.init(&factory, &admin, &creator, &config);
@@ -1122,20 +1204,9 @@ fn emergency_withdraw_fails_if_prize_not_deposited() {
         env.storage().instance().remove(&DataKey::Factory);
     });
 
-    client.deposit_prize();
-    client.buy_tickets(&buyer, &1);
-
-    let balance_before = soroban_sdk::token::Client::new(&env, &payment_token).balance(&buyer);
-    client.cancel_raffle(&CancelReason::CreatorCancelled);
-
-    let refunded = client.refund_ticket(&1);
-    assert_eq!(refunded, MIN_TICKET_PRICE);
-
-    let balance_after = soroban_sdk::token::Client::new(&env, &payment_token).balance(&buyer);
-    assert_eq!(balance_after, balance_before + MIN_TICKET_PRICE);
-
-    let second_refund = client.try_refund_ticket(&1);
-    assert_eq!(second_refund.err(), Some(Ok(Error::PrizeAlreadyClaimed)));
+    // The prize was never deposited, so there is nothing to withdraw.
+    let result = client.try_emergency_withdraw(&creator);
+    assert_eq!(result.err(), Some(Ok(Error::PrizeNotDeposited)));
 }
 
 #[test]
@@ -1211,11 +1282,6 @@ fn emergency_withdraw_only_callable_by_creator_or_admin() {
     let client = ContractClient::new(&env, &contract_id);
 
     let config = RaffleConfig {
-        description: String::from_str(&env, "Test"),
-        end_time: 2_000,
-        no_deadline: false,
-        max_tickets: 1,
-        max_tickets_per_tx: 1,
         description: String::from_str(&env, "Guard release"),
         end_time: 0,
         no_deadline: true,
@@ -1225,7 +1291,6 @@ fn emergency_withdraw_only_callable_by_creator_or_admin() {
         allow_multiple: true,
         ticket_price: MIN_TICKET_PRICE,
         payment_token: payment_token.clone(),
-        prize_amount: MIN_TICKET_PRICE * 10,
         prize_amount: MIN_TICKET_PRICE * 5,
         prizes: soroban_sdk::vec![&env, 10000],
         randomness_source: RandomnessSource::Internal,
@@ -1257,9 +1322,51 @@ fn emergency_withdraw_only_callable_by_creator_or_admin() {
 
 #[test]
 fn emergency_withdraw_sets_status_to_cancelled_and_clears_prize_deposited() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().set_timestamp(1_000);
+
+    let factory = Address::generate(&env);
+    let admin = Address::generate(&env);
+    let creator = Address::generate(&env);
+    let buyer = Address::generate(&env);
+
+    let token_admin = Address::generate(&env);
+    let payment_token = env
+        .register_stellar_asset_contract_v2(token_admin.clone())
+        .address();
+    let token_client = StellarAssetClient::new(&env, &payment_token);
+    token_client.mint(&creator, &1_000_000);
+    token_client.mint(&buyer, &1_000_000);
+
+    let contract_id = env.register(Contract, ());
+    let client = ContractClient::new(&env, &contract_id);
+
+    let config = RaffleConfig {
+        description: String::from_str(&env, "Emergency withdraw"),
+        end_time: 2_000,
+        no_deadline: false,
+        max_tickets: 2,
+        max_tickets_per_tx: 2,
+        min_tickets: 1,
+        allow_multiple: true,
+        ticket_price: MIN_TICKET_PRICE,
+        payment_token: payment_token.clone(),
+        prize_amount: MIN_TICKET_PRICE * 10,
+        prizes: soroban_sdk::vec![&env, 10000],
+        randomness_source: RandomnessSource::Internal,
+        oracle_address: None,
+        protocol_fee_bp: 0,
+        treasury_address: None,
+        swap_router: None,
+        tikka_token: None,
         metadata_hash: BytesN::from_array(&env, &[6u8; 32]),
         claim_lockup_seconds: 0,
         swap_deadline_seconds: 0,
+        prize_token: None,
+        early_bird_ticket_percentage: 0,
+        early_bird_discount_bp: 0,
+        category: None,
     };
 
     client.init(&factory, &admin, &creator, &config);
@@ -1269,19 +1376,19 @@ fn emergency_withdraw_sets_status_to_cancelled_and_clears_prize_deposited() {
 
     client.deposit_prize();
     client.buy_tickets(&buyer, &2);
-    client.cancel_raffle(&CancelReason::CreatorCancelled);
 
-    client.refund_ticket(&1);
-    let second = client.refund_ticket(&2);
-    assert_eq!(second, MIN_TICKET_PRICE);
+    // Selling out moves the raffle into the drawing state, finalizing it
+    // makes the emergency withdrawal path available.
+    client.finalize_raffle(&creator);
 
-    let guard_set: bool = env.as_contract(&contract_id, || {
-        env.storage()
-            .instance()
-            .get(&DataKey::ReentrancyGuard)
-            .unwrap_or(false)
-    });
-    assert!(!guard_set);
+    // Wait for the emergency withdrawal delay, then withdraw the prize.
+    env.ledger()
+        .set_timestamp(1_000 + EMERGENCY_WITHDRAW_DELAY_SECONDS + 1);
+    client.emergency_withdraw(&creator);
+
+    let raffle = client.get_raffle();
+    assert_eq!(raffle.status, RaffleStatus::Cancelled);
+    assert!(!raffle.prize_deposited);
 }
 
 #[test]
@@ -1307,9 +1414,6 @@ fn test_claim_prize_pays_full_gross_with_protocol_fee() {
     let client = ContractClient::new(&env, &contract_id);
 
     let config = RaffleConfig {
-        description: String::from_str(&env, "Test"),
-        end_time: 2_000,
-        no_deadline: false,
         description: String::from_str(&env, "Claim gross"),
         end_time: 0,
         no_deadline: true,
@@ -1323,12 +1427,6 @@ fn test_claim_prize_pays_full_gross_with_protocol_fee() {
         prizes: soroban_sdk::vec![&env, 10000],
         randomness_source: RandomnessSource::Internal,
         oracle_address: None,
-        protocol_fee_bp: 0,
-        treasury_address: None,
-        swap_router: None,
-        tikka_token: None,
-        metadata_hash: BytesN::from_array(&env, &[17u8; 32]),
-        claim_lockup_seconds: 0,
         protocol_fee_bp: 1_000,
         treasury_address: None,
         swap_router: None,
