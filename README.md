@@ -10,8 +10,11 @@ Tikka is a decentralized raffle platform built on Stellar using Soroban smart co
 
 ### **🎲 On-Chain Winner Selection**
 
--   Internal draws use Soroban `env.prng()` with a multi-source seed:
-    `timestamp + sequence + raffle_id + tickets_sold`
+-   Internal draws derive the seed from a SHA-256 pre-image of
+    `timestamp + sequence + raffle_id + tickets_sold`; the first 8 bytes of the
+    digest are used as the draw seed
+-   `env.prng()` is **not** used for internal draws, so every seed is
+    reproducible and auditable off-chain from public ledger data
 -   Deterministic replay for identical raffle and ledger inputs
 -   Intended for low-stakes raffles; high-stakes draws should use oracle randomness
 
@@ -72,7 +75,7 @@ Raffle Ends → Finalize → Select Winner
 ```
 
 -   Winner is selected from sold tickets
--   Internal mode uses Soroban PRNG seeded with multiple ledger and raffle fields
+-   Internal mode hashes multiple ledger and raffle fields into the draw seed
 -   External/oracle mode remains available for stronger trust assumptions
 
 ### **5. Prize Distribution**

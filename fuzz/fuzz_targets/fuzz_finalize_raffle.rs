@@ -3,7 +3,13 @@
 //! This harness reproduces the winner-index bounds invariants for both the
 //! Internal and External randomness paths after the multi-source seed upgrade.
 //!
-//! Internal path seed construction (mirrors `build_internal_seed`):
+//! NOTE (#1201): the contract's finalize path (`build_internal_seed_u64`)
+//! hashes the XDR pre-image `(timestamp, sequence, raffle_id, tickets_sold)`
+//! with SHA-256 and uses the first 8 bytes as the `u64` seed.  The model below
+//! keeps the historical byte-folding construction so the *bounds* invariants
+//! stay covered; it is a conservative model, not a byte-exact replica.
+//!
+//! Internal path seed construction (model):
 //!   seed[0..8]  = timestamp.to_le_bytes()
 //!   seed[8..12] = sequence.to_le_bytes()
 //!   seed[12..20] ^= fold(raffle_id_bytes)   -- XOR-folded address bytes

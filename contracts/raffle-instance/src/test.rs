@@ -111,6 +111,107 @@ fn test_oracle_fallback_with_ledger_delays() {
     assert_eq!(fairness.randomness_source, RandomnessSource::External);
 }
 
+// ============================================================================
+// #1201 — internal draw seed must mix in the raffle id and `tickets_sold`
+// ============================================================================
+
+/// Builds a minimal raffle state for seed-derivation tests.
+fn sample_raffle(
+    env: &Env, creator: Address, payment_token: Address, tickets_sold: u32,
+) -> Raffle {
+    Raffle {
+        creator,
+        description: String::from_str(env, "Seed mixing"),
+        end_time: 0,
+        no_deadline: true,
+        max_tickets: 10,
+        max_tickets_per_tx: 10,
+        min_tickets: 1,
+        allow_multiple: true,
+        ticket_price: MIN_TICKET_PRICE,
+        prize_token: payment_token.clone(),
+        payment_token,
+        prize_amount: MIN_TICKET_PRICE * 10,
+        prizes: soroban_sdk::vec![env, 10000],
+        tickets_sold,
+        status: RaffleStatus::Active,
+        prize_deposited: true,
+        winners: soroban_sdk::Vec::new(env),
+        claimed_winners: soroban_sdk::Vec::new(env),
+        randomness_source: RandomnessSource::Internal,
+        oracle_address: None,
+        protocol_fee_bp: 0,
+        treasury_address: None,
+        swap_router: None,
+        tikka_token: None,
+        finalized_at: None,
+        claim_lockup_seconds: 0,
+        swap_deadline_seconds: 0,
+        ticket_sales_paused: false,
+        early_bird_ticket_percentage: 0,
+        early_bird_discount_bp: 0,
+    }
+}
+
+#[test]
+fn internal_seed_mixes_tickets_sold_and_raffle_id() {
+    let env = Env::default();
+    env.mock_all_auths();
+    env.ledger().with_mut(|l| {
+        l.timestamp = 1_000;
+        l.sequence_number = 7;
+    });
+
+    let creator = Address::generate(&env);
+    let payment_token = env
+        .register_stellar_asset_contract_v2(Address::generate(&env))
+        .address();
+
+    let contract_id = env.register(Contract, ());
+
+    // Two raffle states that only differ in the number of tickets sold.
+    let fewer = sample_raffle(&env, creator.clone(), payment_token.clone(), 3);
+    let more = sample_raffle(&env, creator.clone(), payment_token.clone(), 7);
+
+    let (seed_fewer, seed_more) = env.as_contract(&contract_id, || {
+        (
+            crate::helpers::build_internal_seed_u64(&env, &fewer),
+            crate::helpers::build_internal_seed_u64(&env, &more),
+        )
+    });
+
+    assert_ne!(
+        seed_fewer, seed_more,
+        "tickets_sold must be mixed into the internal draw seed"
+    );
+
+    // The seed stays deterministic for identical inputs.
+    let (seed_again, seed_repeat) = env.as_contract(&contract_id, || {
+        (
+            crate::helpers::build_internal_seed_u64(&env, &fewer),
+            crate::helpers::build_internal_seed_u64(&env, &fewer),
+        )
+    });
+    assert_eq!(seed_again, seed_repeat);
+
+    // Two different raffle instances (different raffle ids) must not share a
+    // seed even with an identical ledger state and ticket count.
+    let other_contract_id = env.register(Contract, ());
+    let other_raffle = sample_raffle(&env, creator, payment_token, 3);
+
+    let seed_here = env.as_contract(&contract_id, || {
+        crate::helpers::build_internal_seed_u64(&env, &fewer)
+    });
+    let seed_there = env.as_contract(&other_contract_id, || {
+        crate::helpers::build_internal_seed_u64(&env, &other_raffle)
+    });
+
+    assert_ne!(
+        seed_here, seed_there,
+        "the raffle id must be mixed into the internal draw seed"
+    );
+}
+
 #[test]
 fn test_admin_updates_oracle_address() {
     let env = Env::default();

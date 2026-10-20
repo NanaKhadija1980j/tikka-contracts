@@ -91,7 +91,7 @@ pub(crate) fn finalize_raffle(env: Env) -> Result<(), Error> {
         }
     }
 
-    let seed = build_internal_seed_u64(&env);
+    let seed = build_internal_seed_u64(&env, &raffle);
     do_finalize_with_seed(&env, raffle, seed, RandomnessType::Prng)
 }
 
@@ -158,7 +158,7 @@ pub(crate) fn trigger_randomness_fallback(env: Env, caller: Address, do_refund: 
         return Ok(());
     }
 
-    let seed = build_internal_seed_u64(&env);
+    let seed = build_internal_seed_u64(&env, &raffle);
     RandomnessFallbackTriggered {
         triggered_by: caller, seed_used: seed, request_ledger: req_ledger,
         fallback_ledger: env.ledger().sequence(), timestamp: env.ledger().timestamp(),

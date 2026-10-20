@@ -119,12 +119,29 @@ pub(crate) fn validate_token_address(env: &Env, token_address: &Address) -> Resu
     Ok(())
 }
 
-pub(crate) fn build_internal_seed_u64(env: &Env) -> u64 {
+/// Builds the internal draw seed for a raffle (#1201).
+///
+/// The pre-image is XDR-encoded and hashed with SHA-256; the first eight bytes
+/// of the digest become the `u64` seed.  Four inputs are mixed in:
+///
+/// 1. `env.ledger().timestamp()` – the ledger timestamp of the draw.
+/// 2. `env.ledger().sequence()` – the ledger sequence of the draw.
+/// 3. the raffle id (the raffle instance contract address).
+/// 4. `raffle.tickets_sold` – how many tickets were sold when the draw ran.
+///
+/// Mixing the raffle id *and* `tickets_sold` guarantees that two raffles
+/// evaluated at the same ledger timestamp and sequence still derive different
+/// seeds, because the participant-visible state of the raffle is part of the
+/// pre-image.  `env.prng()` is deliberately **not** used: the host PRNG is not
+/// available on every Soroban network and would make the seed unauditable.
+pub(crate) fn build_internal_seed_u64(env: &Env, raffle: &Raffle) -> u64 {
     use soroban_sdk::xdr::ToXdr;
+    let raffle_id = env.current_contract_address();
     let xdr = (
         env.ledger().timestamp(),
         env.ledger().sequence(),
-        env.current_contract_address(),
+        raffle_id,
+        raffle.tickets_sold,
     ).to_xdr(env);
     let hash: BytesN<32> = env.crypto().sha256(&xdr).into();
     let arr = hash.to_array();

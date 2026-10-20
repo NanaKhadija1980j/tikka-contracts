@@ -18,19 +18,30 @@ If you need protocol detail for commits, also read [COMMIT_REVEAL.md](COMMIT_REV
 
 ### How the seed is built
 
-Primary helper: `build_internal_seed` / `PrngWinnerSelection` in `randomness.rs`, and `build_internal_seed_u64` used by the finalize path in `lib.rs` / `draw.rs`.
+The finalize path is implemented by `build_internal_seed_u64`
+(`contracts/raffle-instance/src/helpers.rs`, mirrored in `lib.rs` for the
+contract entrypoint and used from `draw.rs`).
 
-Entropy mixed into the 32-byte path:
+The pre-image mixes exactly four inputs:
 
-1. Ledger timestamp  
-2. Ledger sequence  
-3. Network id (SHA-256 of network passphrase)  
-4. Raffle contract address  
-5. `tickets_sold` (folded into the PRNG seed bytes)
+1. Ledger timestamp (`env.ledger().timestamp()`)
+2. Ledger sequence (`env.ledger().sequence()`)
+3. Raffle id — the raffle instance contract address
+4. `tickets_sold` — the number of tickets sold when the draw ran
 
-Values are XDR-packed and hashed with `env.crypto().sha256`, then fed to `env.prng().seed(...)`. Winner indices are sampled without replacement via `u64_in_range`.
+The four inputs are XDR-packed, hashed with `env.crypto().sha256`, and the
+first **8 bytes** of the digest become the `u64` seed that is handed to
+`do_finalize_with_seed`.
 
-The compact u64 seed used when finalizing through `do_finalize_with_seed` hashes `(timestamp, sequence, current_contract_address)` and takes the first 8 bytes.
+Mixing the raffle id *and* `tickets_sold` means two raffles evaluated at the
+same ledger timestamp and sequence still derive different seeds, because the
+participant-visible state of the raffle is part of the pre-image (#1201).
+
+> **Note:** `env.prng()` is **not** used for internal draws. The 32-byte
+> helper `build_internal_seed` / `PrngWinnerSelection` in `randomness.rs` still
+> seeds the host PRNG, but it is not the code path used by `finalize_raffle`;
+> the finalize path derives the seed exactly as described above so it stays
+> reproducible and auditable off-chain.
 
 ### Who can influence it
 
