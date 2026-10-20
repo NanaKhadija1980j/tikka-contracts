@@ -235,7 +235,10 @@ Typical instance lifecycle (see [ARCHITECTURE.md](ARCHITECTURE.md)):
 
 1. `deposit_prize` — creator escrows the prize (`PendingPrize` → `Active`)
 2. `buy_tickets` — buyers purchase entries
-3. `finalize_raffle` — starts the draw (Internal / External / CommitReveal)
+3. `finalize_raffle` — starts the draw (Internal / External / CommitReveal).
+   Since #1253 the call takes the address that triggers the draw; that address
+   must authorise the call and is reported as the `caller` of the
+   `DrawTriggered` event
 4. For `External`: run the `oracle/` service so it calls `provide_randomness`
 5. `claim_prize` — winners withdraw after claim lockup
 
@@ -243,7 +246,8 @@ Example finalize:
 
 ```bash
 export RAFFLE_CONTRACT_ADDRESS="<INSTANCE_C_ADDRESS>"
-./scripts/invoke.sh finalize_raffle
+export RAFFLE_CALLER_ADDRESS="<CALLER_ADDRESS>"
+./scripts/invoke.sh finalize_raffle "$RAFFLE_CALLER_ADDRESS"
 ```
 
 ### 8. Verify factory WASM

@@ -15,13 +15,19 @@ use crate::{
     CommitRevealEntry, DataKey, Error, RaffleStatus, ORACLE_TIMEOUT_LEDGERS,
 };
 
-pub(crate) fn finalize_raffle(env: Env) -> Result<(), Error> {
+/// Finalizes a raffle and selects the winners.
+///
+/// #1253: finalization is permissionless — the triggering address is passed
+/// explicitly and must authorise the call, so the `DrawTriggered` event
+/// reports the real caller instead of always reporting the creator.
+pub(crate) fn finalize_raffle(env: Env, caller: Address) -> Result<(), Error> {
     let drawing_lock: bool = env.storage().instance().get(&DataKey::DrawingLock).unwrap_or(false);
     if drawing_lock {
         return Err(Error::DrawingAlreadyInProgress);
     }
     let mut raffle = read_raffle(&env)?;
-    raffle.creator.require_auth();
+    // #1253: authorise the address that actually triggers the draw.
+    caller.require_auth();
 
     if raffle.status != RaffleStatus::Active && raffle.status != RaffleStatus::Drawing {
         return Err(Error::InvalidStatus);
@@ -47,7 +53,6 @@ pub(crate) fn finalize_raffle(env: Env) -> Result<(), Error> {
         return Ok(());
     }
 
-    let caller = raffle.creator.clone();
     let pre_status = raffle.status.clone();
     transition_to_drawing(&env, &mut raffle, now)?;
 

@@ -133,7 +133,7 @@ pub fn get_raffles(... ) -> PageResultRaffles;
 pub fn init(... ) -> Result<(), Error>;
 pub fn deposit_prize(... ) -> Result<(), Error>;
 pub fn buy_tickets(... ) -> Result<u32, Error>;
-pub fn finalize_raffle(... ) -> Result<(), Error>;
+pub fn finalize_raffle(caller: Address, ... ) -> Result<(), Error>;
 pub fn provide_randomness(... ) -> Result<(), Error>;
 pub fn claim_prize(... ) -> Result<i128, Error>;
 pub fn cancel_raffle(... ) -> Result<(), Error>;

@@ -916,9 +916,19 @@ impl Contract {
         self::tickets::submit_commit(env, ticket_id, hash)
     }
 
-    pub fn finalize_raffle(env: Env) -> Result<(), Error> {
+    /// Finalizes a raffle and selects the winners.
+    ///
+    /// #1253: finalization is permissionless — any address may trigger it once
+    /// the raffle has ended (`time_ended`) or sold out (`tickets_full`).  The
+    /// triggering address is passed explicitly and must authorise the call, so
+    /// the `DrawTriggered` event reports the real caller instead of always
+    /// reporting the creator.
+    pub fn finalize_raffle(env: Env, caller: Address) -> Result<(), Error> {
         let mut raffle = read_raffle(&env)?;
-        raffle.creator.require_auth();
+        // #1253: authorise the address that actually triggers the draw.  The
+        // preconditions below (`time_ended || tickets_full`) keep the draw
+        // deterministic regardless of who triggers it.
+        caller.require_auth();
 
         if raffle.status != RaffleStatus::Active && raffle.status != RaffleStatus::Drawing {
             return Err(Error::InvalidStatus);
@@ -955,7 +965,6 @@ impl Contract {
             return Ok(());
         }
 
-        let caller = raffle.creator.clone();
         let pre_drawing_status = raffle.status.clone();
 
         if raffle.status != RaffleStatus::Drawing {

@@ -422,12 +422,19 @@ Emitted when the draw process is initiated for a raffle.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `caller` | `Address` | Address that initiated the draw |
+| `caller` | `Address` | Address that initiated the draw (the buyer for `buy_tickets`, the triggering address for `finalize_raffle`) |
 | `total_tickets_sold` | `u32` | Total number of tickets sold at the time of draw |
 | `timestamp` | `u64` | Ledger timestamp when the draw was triggered |
 
 **Emitted by:** `buy_tickets`, `finalize_raffle`
 **When:** The raffle enters the drawing phase — either because the last ticket was sold (via `buy_tickets`) or because `finalize_raffle` is called explicitly for `Internal`/`External`/`CommitReveal` randomness.
+
+> **Note (#1253):** `finalize_raffle` is permissionless. The address that
+> triggers the draw is passed explicitly as the `caller` argument and must
+> authorise the call (`caller.require_auth()`). `DrawTriggered.caller` reports
+> that address — it is **not** hard-coded to the raffle creator. The draw
+> preconditions are unchanged: the raffle must have ended (`time_ended`) or be
+> sold out (`tickets_full`).
 
 ---
 

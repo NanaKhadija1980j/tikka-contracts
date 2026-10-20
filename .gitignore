@@ -23,6 +23,9 @@ progress.md
 issue-*-requirements
 CLAUDE.md
 
+# Local pull-request description (generated for the current PR only)
+PR_DESCRIPTION.md
+
 # Claude AI configuration and skills
 .claude/
 .agents/
